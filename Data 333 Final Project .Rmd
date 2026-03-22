@@ -1,0 +1,744 @@
+---
+title: "Family Success"
+subtitle: "Analyzing Income and Working Status for households with Children"
+author: |
+  | Michelle Llanos
+date: "May 21st, 2023"
+output:
+  rmdformats::material:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: kate
+    code_folding: hide
+---
+
+<style>
+
+.list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover {
+    background-color: #a1b1b1;
+     text-align: center;
+     font-weight: bold;
+}
+
+</style>
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+
+rm(list = ls(all.names = TRUE))
+gc()
+
+
+if (!require('tidyverse')) 
+  install.packages('tidyverse', 
+                   repos = "http://cran.us.r-project.org"); 
+library('tidyverse')
+
+if (!require('tidycensus')) 
+  install.packages('tidycensus', 
+                   repos = "http://cran.us.r-project.org"); 
+library('tidycensus')
+
+library(kableExtra)
+
+census_api_key("3fe12b33511f627d852682647d7b0e043786121a")
+
+knitr::opts_chunk$set(fig.width = 12, 
+                      fig.height = 6)
+ 
+options(scipen=999)
+
+```
+
+# **Introduction, Methods, and Analysis**
+## **Introduction**
+My research question is **What are the differences in income levels and working status of households with children between Texas and New York, and which state exhibits better economic conditions for families?**
+
+This question is interesting and important to me because as a new mother I want to be able to set my family up for success. When considering a move, examining the income and working status of households with children can assist you in making informed decisions about the location that best suits your financial situation, career aspirations, family needs, and overall quality of life. It's always helpful to gather relevant data to ensure a smooth transition and a positive living experience in your new community.
+
+### **Methods**
+Utilizing the tidycensus package, the 2019 ACS (American Community Survey) PUMS (Public Use Micro Sample) was obtained for both New York and Texas. The variables selected from the data were the following: Family type and employment status, Family income, Household/family type (includes cohabiting), HH presence and age of own children, Number of own children in household, Public assistance income past 12 months, Employment status of parents. With these variables and the data pulled from the ACS PUMS dataset the sample before cleaning was 12 variables -- including weights -- and a total of 471564 observations/respondents.
+
+**State**
+
+I started by renaming "ST" to State. Then I cleaned State by using factor and labeling 36 as "NY" and 48 as "TX".
+
+**Household family type**
+
+I started by renaming "HHT2" to Household_family_type. Then I cleaned it by using case.when(). 
+Combining "01" and "03" to "Married/Cohabiting with Children, "06" and "10" to "Alone with Children", and combining every other value as "No Children". I also removed any NA values.
+
+**Household presence and age of children**
+
+I started by renaming "HUPAOC" to Household_presence_and_age_of_children. Then I cleaned it by using case.when() and changing the number values to what they mean. From "1" to "Children under 6", "2" to "Children between 6 to 17", "3" to "Children under 6 and 6 to 17", "4" to "No Children". I also removed any NA values.
+
+**Family type employment status**
+
+I started by renaming "FES" to Family_type_employment_status. Then I cleaned it by using case.when().
+From "1" to "Married couple both employed", Combined "2 and 3" to "Married couple one person employed", "4" to "Married couple both unemployed", combined "5 and 7" to "Individual Householder Employed", combined "6 and 8" to "Individual Householder Unemployed. I also removed any NA values. 
+
+**Employment Status of parents** 
+
+I started by renaming "ESP" to Employment_status_of_parents. Then I cleaned it by using case.when().
+From "b" to "Not child of householder/subfamily", "1" to "Both parents in labor force", combined "2 and 3" to "One of the parents in labor force", "4" to "Both parents not in labor force", combined "5 and 7" to "Single parent in labor force", and combined "6 and 8" to "Single parents not in labor force". I also removed any NA values.
+
+**Public assistance income**
+
+I started by renaming "PAP" to Public assistance income. I then cleaned it by using case.when().
+I changed the value of equals to "0" to "Does not receive public assistance income", then changed any value equal to or greater than "1" to "Receives public assistance income". I also removed any NA values.
+
+**Family Income**
+I started by cleaning all observations that are outside of the 5th and 95th percentile. I then renamed the "FINCP" to "Family Income". I then filtered if personal income is less than or equal to the upper bound, greater than or equal to the lower bound, and not equal to "bbbbbbb" (from the data dictionary is NA).
+
+**Number of Children**
+I started by renaming "NOC" to "Number_of_children". I cleaned it by using case.when().
+From "0" to "No children" and anything greater than or equal to "1" and less than or equal to "19" to "Children". I also removed any NA values. 
+
+#### **Analysis**
+In my analysis, I will use table to look at each variable individually and contrast each state. I will use ggplot for some visualization as well as including t.test and chis.test by state. We will see how each state compares to one another. 
+
+
+```{r projectdata_import, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+acs_pums_categorical_variables = c(
+  "HHT2",
+  "HUPAOC",
+  "FES",
+  "ESP")
+
+acs_pums_continuous_variables = c(
+  "PAP",
+  "FINCP",
+  "NOC")
+
+acs_pums_variables_vector = c(acs_pums_categorical_variables, 
+                              acs_pums_continuous_variables)
+
+rm(acs_pums_categorical_variables, acs_pums_continuous_variables)
+
+acs_pums_data_state_one <- get_pums(variables = acs_pums_variables_vector, 
+                     state = "NY",
+                     year = "2019",
+                     survey = "acs1") 
+
+acs_pums_data_state_two <- get_pums(variables = acs_pums_variables_vector, 
+                     state = "TX",
+                     year = "2019",
+                     survey = "acs1") 
+
+acs_pums_data <- rbind(acs_pums_data_state_one,
+                       acs_pums_data_state_two)
+
+rm(acs_pums_data_state_one, acs_pums_data_state_two)
+
+
+acs_pums_data_clean <- acs_pums_data %>%
+  select("SERIALNO", "ST", "HHT2", "HUPAOC", "FES", "ESP", "PAP", "FINCP", "NOC")%>% 
+  rename("ID" = SERIALNO, 
+         "State" = ST)
+
+head(acs_pums_data_clean)
+tail(acs_pums_data_clean)
+summary(acs_pums_data_clean)
+colnames(acs_pums_data_clean)
+
+
+acs_pums_data_clean$State <- factor(acs_pums_data_clean$State, 
+                                    labels = c("NY", "TX"))
+
+unique(acs_pums_data$ST)
+table(acs_pums_data$ST)
+
+unique(acs_pums_data_clean$State)
+table(acs_pums_data_clean$State)
+
+
+acs_pums_data_clean <- acs_pums_data_clean%>% 
+  rename("Household_family_type" = HHT2)%>%
+  mutate(Household_family_type = case_when(
+      Household_family_type == 'bb' ~ as.character(NA),
+      Household_family_type %in% c('01', '03') ~ 'Married/Cohabiting with children', 
+      Household_family_type  %in% c('06', '10') ~ 'Alone with children',
+      TRUE ~ "No Children"
+      ))
+
+
+unique(acs_pums_data$HHT2)
+table(acs_pums_data$HHT2)
+
+unique(acs_pums_data_clean$Household_family_type)
+table(acs_pums_data_clean$Household_family_type)
+
+
+acs_pums_data_clean <- acs_pums_data_clean%>% 
+  rename("Household_presence_and_age_of_children" = HUPAOC)%>%
+  mutate(Household_presence_and_age_of_children = case_when(
+      Household_presence_and_age_of_children == 'b' ~ as.character(NA),
+      Household_presence_and_age_of_children == '1' ~ 'Children under 6', 
+      Household_presence_and_age_of_children == '2' ~ 'Children between 6 to 17', 
+      Household_presence_and_age_of_children == '3' ~ 'Children under 6 and 6 to 17', 
+      Household_presence_and_age_of_children == '4' ~ 'No children',
+      TRUE ~ "Other"))
+
+
+unique(acs_pums_data$HUPAOC)
+table(acs_pums_data$HUPAOC)
+
+
+unique(acs_pums_data_clean$Household_presence_and_age_of_children)
+table(acs_pums_data_clean$Household_presence_and_age_of_children)
+
+
+  acs_pums_data_clean <- acs_pums_data_clean%>%
+  rename("Family_type_employment_status" = FES)%>%
+  mutate(Family_type_employment_status = case_when(
+      Family_type_employment_status == 'b' ~ as.character(NA),
+      Family_type_employment_status == '1' ~ 'Married couple both Employed',
+      Family_type_employment_status %in% c('2', '3') ~ 'Married Couple one person Employed',
+      Family_type_employment_status == '4' ~ 'Married couple Both Unemployed',
+      Family_type_employment_status  %in% c('5', '7') ~ 'Individual Householder Employed',
+      Family_type_employment_status  %in% c('6', '8') ~ 'Individual Householder Unemployed',
+      TRUE ~ "Other"
+      ))
+  
+unique(acs_pums_data$FES)
+table(acs_pums_data$FES)
+
+unique(acs_pums_data_clean$Family_type_employment_status)
+table(acs_pums_data_clean$Family_type_employment_status)
+
+
+acs_pums_data_clean <- acs_pums_data_clean%>% 
+  rename("Employment_status_of_parents" = ESP)%>%
+  mutate(Employment_status_of_parents = case_when(
+      Employment_status_of_parents == 'b' ~ "Not child of householder/subfamily",
+      Employment_status_of_parents == '1' ~ 'Both parents in labor force',
+      Employment_status_of_parents %in% c('2', '3') ~ 'One of the parents in labor force',
+      Employment_status_of_parents == '4' ~ 'Both parents not in labor force',
+      Employment_status_of_parents  %in% c('5', '7') ~ 'Single parent in labor force',
+      Employment_status_of_parents  %in% c('6', '8') ~ 'Single parent not in labor force',
+      TRUE ~ "Other"
+      ))
+
+unique(acs_pums_data$ESP)
+table(acs_pums_data$ESP)
+
+unique(acs_pums_data_clean$Employment_status_of_parents)
+table(acs_pums_data_clean$Employment_status_of_parents)  
+
+
+round((colSums(is.na(acs_pums_data_clean))/nrow(acs_pums_data_clean)*100))
+acs_pums_data_clean <- drop_na(acs_pums_data_clean)
+
+head(acs_pums_data_clean)
+tail(acs_pums_data_clean)
+summary(acs_pums_data_clean)
+colnames(acs_pums_data_clean)
+
+acs_pums_data_clean <- acs_pums_data_clean%>% 
+  mutate(PAP = case_when(
+      PAP == 0 ~ 'Does Not Recieve Public Assistance Income',
+      PAP >= 1  ~ 'Recieves Public Assistance Income',
+      TRUE ~ as.character(NA)))%>%
+    rename("Public_assistance_income" = PAP)
+
+
+
+unique(acs_pums_data_clean$PAP)
+table(acs_pums_data_clean$PAP)
+
+
+unique(acs_pums_data_clean$Public_assistance_income)
+table(acs_pums_data_clean$Public_assistance_income)
+
+
+lower_bound <- quantile(acs_pums_data_clean$Family_income, 0.05)
+print(lower_bound)
+
+upper_bound <- quantile(acs_pums_data_clean$Family_income, 0.95)
+print(upper_bound)
+
+outlier_ind <- which(acs_pums_data_clean$Family_income < lower_bound | acs_pums_data_clean$Family_income > upper_bound)
+print(length(outlier_ind))
+
+
+acs_pums_data_clean <- acs_pums_data_clean%>% 
+  rename("Family_income" = FINCP)%>%
+  filter(Family_income <= quantile(Family_income, .95) & 
+           Family_income >= quantile(Family_income, .05) & 
+           Family_income != "bbbbbbb")
+
+summary(acs_pums_data_clean$Family_income)
+boxplot(acs_pums_data_clean$Family_income)
+hist(acs_pums_data_clean$Family_income)
+
+100 - round((nrow(acs_pums_data_clean)/nrow(acs_pums_data)*100))
+
+
+acs_pums_data_clean <- acs_pums_data_clean%>%
+  mutate(NOC = case_when(
+      NOC == 0 ~ 'No children',
+      NOC >= 1 & NOC <= 19 ~ 'Children',
+      TRUE ~ as.character(NA)))%>% 
+  rename("Number_of_children" = NOC)
+
+unique(acs_pums_data_clean$NOC)
+table(acs_pums_data_clean$NOC)
+
+
+summary(acs_pums_data_clean$Number_of_children)
+unique(acs_pums_data_clean$Number_of_children)
+table(acs_pums_data_clean$Number_of_children)
+
+
+```
+
+# ***Description of Variables*** 
+## **State**
+```{r echo=FALSE}
+
+table(acs_pums_data_clean$State)
+
+ggplot( 
+  data=acs_pums_data_clean, 
+  aes( 
+    x = State
+    )
+  ) + 
+  geom_bar( 
+    stat="count",
+    position = "dodge")+
+    theme_light()
+
+
+```
+In this data, the state of NY, 40% of the data breakdown is in this State or 136,515 respondents. 
+In this data, the state of TX, 60% of the data breakdown is in this State or 201,555 respondents.
+
+### **Household family type**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Household_family_type)
+
+HFT_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Household_family_type),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Household_family_type" = Var2,
+      "Percentage" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percentage,
+      fill = Household_family_type))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percentage, 
+          label = round(Percentage), 
+          group = Household_family_type),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Household Family Type",
+    subtitle = "Household family type is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Household Family Type",
+        override.aes = aes(label = "")))
+
+HFT_bar_graph
+```
+Based on the Household_family_type data shows, in NY there are 9,226 households alone with children, 52,834 households married/cohabiting with children, and 74,455 households with no children. In TX there are 14,763 households alone with children, 84,350 households married/cohabiting with children, and 102,442 households with no children. Based on the data there are more households in TX alone with children, more households married with children in TX, and lastly more households with no children in TX.
+
+#### **Household presence and age of children**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Household_presence_and_age_of_children)
+
+HPAC_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Household_presence_and_age_of_children),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Household_presence_and_age_of_children" = Var2,
+      "Percentage" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percentage,
+      fill = Household_presence_and_age_of_children))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percentage, 
+          label = round(Percentage), 
+          group = Household_presence_and_age_of_children),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Household Presence and Age of Children",
+    subtitle = "Household presence and age of children is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Household Presence and Age of Children",
+        override.aes = aes(label = "")))
+
+HPAC_bar_graph
+
+```
+Based on the Household presence and age of children by State data shows, in NY there are 36,020 households with children from 6 to 17, 11,918 households with children under 6, 14,063 households with children under 6 and from 6 to 17, and 74,514 household with no children. in TX there are 57,586 households with children from 6 to 17, 16,736 households with children under 6, 24,696 households with children under 6 and from 6 to 17, and 102,537 household with no children. Based on the data there are more children in texas households than NY.
+
+##### **Family type employment status**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Family_type_employment_status)
+
+
+FES_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Family_type_employment_status),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Family_type_employment_status" = Var2,
+      "Percent" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percent,
+      fill = Family_type_employment_status))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percent, 
+          label = round(Percent), 
+          group = Family_type_employment_status),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Family Employment Status",
+    subtitle = "Family employment status is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Family Employment Status",
+        override.aes = aes(label = "")))+
+coord_flip()
+
+FES_bar_graph
+```
+Based on the Family type employment status by State data shows, in NY there is 24,428 individual householder employed, 8,867 individual householder unemployed, 56,729 Married couple both employed, 16,249 Married couple both unemployed, and 30,242 Married Couple one person employed. In TX there is 33,782 individual householder employed, 10,843 individual householder unemployed, 80,682 Married couple both employed, 22,300 Married couple both unemployed, and 53,948 Married Couple one person employed. There is more employed and unemployed households in Texas.
+
+###### **Employment status of parents**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Employment_status_of_parents)
+
+ESP_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Employment_status_of_parents),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Employment_status_of_parents" = Var2,
+      "Percentage" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percentage,
+      fill = Employment_status_of_parents))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percentage, 
+          label = round(Percentage), 
+          group = Employment_status_of_parents),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Employment Status of Parents",
+    subtitle = "Employment status of parents is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Employment Status of Parents",
+        override.aes = aes(label = "")))+
+coord_flip()
+
+ESP_bar_graph
+```
+Based on the Employment status of parents by State data shows, in NY there is 14,938 households with both parents in labor force, 219 households with both parents not in labor force, 106,569 household with not child of householder/subfamily, 6,596 households with one of the parents in labor force, 7,281 households with single parent in labor force, and 912 households with single parent not in labor force. In TX there is 22,247 households with both parents in labor force, 409 households with both parents not in labor force, 151,090 households with not child of householder/subfamily, 13,678 households with one of the parents in labor force, 12,534 with single parent in labor force, and 1,597 households with single parent not in labor force. 
+
+####### **Public assistance income**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Public_assistance_income)
+
+PAI_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Public_assistance_income),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Public_assistance_income" = Var2,
+      "Percent" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percent,
+      fill = Public_assistance_income))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percent, 
+          label = round(Percent), 
+          group = Public_assistance_income),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Public_assistance_income",
+    subtitle = "Public_assistance_income is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Public_assistance_income",
+        override.aes = aes(label = "")))+
+coord_flip()
+
+PAI_bar_graph
+```
+Based on the Public Assistance income by State data, 109,721 NY families do not receive public assistance income and 1,256 NY families do receive Public assistance income. 157,051 TX families do not receive public assistance income and 1,151 TX families do receive Public assistance income. There was 68,891 NA value for both states combined. There is more public assistance income in NY than TX, but overall there is under 1% public assistance income.
+
+######## **Family Income**
+```{r echo=FALSE}
+acs_pums_data_clean %>%
+  group_by(State)%>%
+  summarise(mean = mean(Family_income), 
+            sd = sd(Family_income), 
+            median = median(Family_income), 
+            IQR = IQR(Family_income),
+            min = min(Family_income), 
+            max = max(Family_income))
+
+options(scipen = 999)
+
+
+ggplot( 
+  data = acs_pums_data_clean,
+  aes(
+    x=Family_income,
+    fill=State,
+    group=State
+    )
+  ) +
+  geom_density(
+    aes(
+    y= -1*..density.. 
+    ),
+    alpha=0.6,
+    data = ~ subset(., State == "NY")
+    )+
+  geom_density(
+    aes(
+      y=..density..
+      ),
+    alpha=0.6,
+    data = ~ subset(., State %in% c("TX")
+                    )
+    ) +
+   labs( 
+    x = "Family Income",
+    y = "Density",
+    title = "Family Income Distribution by State",
+    subtitle = "State is indicated by color",
+    caption = "Data from NYC OPEN DATA"
+    )
+
+```
+Based on the Family Income by State, In NY, the family income mean is 110,916.31, the standard deviation(sd) is 70,405.73, the median is 95,700, the IQR is 94,700. In TX, the family income mean is 97,958.16, the sd is 63,398.83, median is 83,000, the IQR is 80,410. The minimum family income for both states is 15,000 and maximum family income is 335,000.
+
+######### **Number of Children**
+```{r echo=FALSE}
+table(acs_pums_data_clean$State, acs_pums_data_clean$Number_of_children)
+
+NOC_bar_graph <- data.frame(prop.table(table(acs_pums_data_clean$State, acs_pums_data_clean$Household_family_type),margin = 2)*100)%>%
+  rename(
+      "State" = Var1,
+      "Number_of_children" = Var2,
+      "Percentage" = Freq
+      )%>%
+  ggplot(
+    aes(
+      x = State,
+      y = Percentage,
+      fill = Number_of_children))+
+  geom_bar(
+    stat = "identity",
+    position = "dodge")+
+  geom_label(
+      aes(x = State, 
+          y = Percentage, 
+          label = round(Percentage), 
+          group = Number_of_children),
+      position = position_dodge(width = 1))+
+  labs(
+    x = "State",
+    y = "Percentage",
+    title = "State by Number of Children",
+    subtitle = "Number of Children is indicated by color",
+    caption = "DATA from ACS PUMS")+
+  theme_light()+
+  scale_fill_brewer(palette = "PuBu")+
+    theme(legend.title = element_text(face = "bold"), 
+          text = element_text(size = 14))+
+   guides(
+      fill = guide_legend(
+        title = "Number of Children",
+        override.aes = aes(label = "")))
+
+NOC_bar_graph
+```
+Based on the Number of Children by State data shows, in NY there are 62,001 households with children and 74,514 households with no children. In TX there are 99,018 households with children and 102,537 households with no children.
+
+# ***Results of Testing*** 
+## **Family income by Family employment status and State**
+```{r}
+acs_pums_data_clean %>%
+  group_by(Family_type_employment_status, State)%>%
+  summarise(mean = mean(Family_income), 
+            sd = sd(Family_income), 
+            median = median(Family_income), 
+            IQR = IQR(Family_income),
+            min = min(Family_income), 
+            max = max(Family_income))
+
+```
+Based on Family Income by family type employment status and state, NY individual householder employed mean is 80,746.59, the standard deviation is 56,623.99, the median is 65,000, the IQR is 65,100, the minimum is 15,000 and maximum is 335,000. TX individual householder employed mean is 64,731.50, the standard deviation is 44,023.97, the median is 53,000, the IQR is 49,100, the minimum is 15,000 and maximum is 332,200.NY individual householder unemployed mean is 73,236.04, the standard deviation is 53,595.81, the median is 57,200, the IQR is 66,800, the minimum is 15,000 and maximum is 323,900. TX individual householder unemployed mean is 59,668.34, the standard deviation is 43,260.64, the median is 47,800, the IQR is 47,450, the minimum is 15,000 and maximum is 334,000. NY Married couple with one person employed mean is 105,567.67, the standard deviation is 68,820.60, the median is 89,000, the IQR is 88,297, the minimum is 15,000 and maximum is 335,000. TX Married couple with one person employed mean is 94,126.27, the standard deviation is 60,017.17, the median is 80,000, the IQR is 75,200, the minimum is 15,000 and maximum is 334,100. NY Married couple both unemployed mean is 86,193.27, the standard deviation is 59,825.01, the median is 70,600, the IQR is 66,000, the minimum is 15,000 and maximum is 335,000. TX Married couple both unemployed mean is 77,629.39, the standard deviation is 55,816.20, the median is 63,000, the IQR is 57,880, the minimum is 15,000 and maximum is 334,900. NY Married couple both employed mean is 139,730.06, the standard deviation is 70,105.65, the median is 128,500, the IQR is 97,400, the minimum is 15,000 and maximum is 335,000. TX Married couple both employed mean is 125,197.11, the standard deviation is 64,678.31, the median is 114,000, the IQR is 84,300, the minimum is 15,000 and maximum is 335,000.  
+Based on these comparisons, we can see that in most employment categories, New York (NY) tends to have higher family income mean, IQR, and median compared to Texas (TX). However, it's worth noting that the standard deviations also differ, indicating the variability in family income within each category.
+
+
+
+### **T.Test Family Income by State**
+```{r}
+acs_pums_data_clean %>%
+  group_by(State)%>%
+  summarise(mean = mean(Family_income), 
+            sd = sd(Family_income), 
+            median = median(Family_income), 
+            IQR = IQR(Family_income),
+            min = min(Family_income), 
+            max = max(Family_income))
+
+filtered_data_ny <- acs_pums_data_clean%>% 
+  filter(State == "NY")
+
+State_Sampling_NY <- replicate(10000,
+                            sample(filtered_data_ny$Family_income,40)%>%
+                              mean(na.rm=TRUE)
+                            )%>%
+  data.frame()%>%
+  rename("mean"=1)
+# Here we're doing the following: sample 40 respondents from the data set, 
+# and find the mean. Replicate this 10,000 times. Finally turn this into a 
+# data frame and rename the first column as mean. Why? We want to be able to 
+# use the t.test to see if there's a difference between the two groups, but 
+# first we need to check that the sampling distribution is 'normal' or looks
+# like a normal bell curve. 
+
+filtered_data_tx <- acs_pums_data_clean%>% 
+  filter(State == "TX")
+# Create a new data set that only contains data from NJ 
+
+State_Sampling_TX <- replicate(10000,
+                            sample(filtered_data_tx$Family_income,40)%>%
+                              mean(na.rm=TRUE)
+                            )%>%
+  data.frame()%>%
+  rename("mean"=1)
+# We do the same thing as above just for NJ, where we sample 40 people 10,000
+# times. 
+
+ggplot()+
+  geom_histogram(data=State_Sampling_NY, aes(x=mean),fill="red")+
+  geom_histogram(data=State_Sampling_TX, aes(x=mean),fill="blue")
+# Then we're quickly going to plot the two plots on-top of each other (without 
+# anything fancy. We're going to learn how to make this look nicer next week). 
+# Look at the graphs, not only do the distributions overlap, they're both 
+# a 'normal' looking bell curve. 
+
+t.test(Family_income ~ State, data=acs_pums_data_clean) 
+
+
+```
+The Welch Two Sample t-test was conducted on the data comparing family income between New York (group NY) and Texas (group TX). The test yielded a t-value of 54.635 with a very large degrees of freedom (272,058) and an extremely low p-value (< 0.00000000000000022).
+
+Based on the extremely small p-value of less than 0.00000000000000022, we can conclude that there is strong evidence to reject the null hypothesis. The null hypothesis assumes that there is no difference in means between the NY and TX groups. Therefore, the alternative hypothesis, which states that the true difference in means between the two groups is not equal to 0, is supported by the data.
+
+In simpler terms, the results suggest that there is a significant difference in family income between the states of NY and TX.
+
+
+#### **Chi-Squared test by Employment Status of Parents and State**
+```{r}
+
+prop.table(table(acs_pums_data_clean$Employment_status_of_parents, acs_pums_data_clean$State), 1)
+
+round(prop.table(table(acs_pums_data_clean$Employment_status_of_parents, acs_pums_data_clean$State), 
+                 margin = 1)*100)
+
+chisq.test(acs_pums_data_clean$Employment_status_of_parents, acs_pums_data_clean$State)
+```
+The Pearson's Chi-squared test was conducted to analyze the relationship between the employment status of parents and the state (NY and TX). The test yielded a test statistic of 755.54 with 5 degrees of freedom and a p-value of less than 0.00000000000000022.
+
+Based on the extremely small p-value of less than 0.00000000000000022, we can conclude that there is strong evidence to reject the null hypothesis. The null hypothesis assumes that there is no association between the employment status of parents and the state. Therefore, the alternative hypothesis, which suggests an association between these variables, is supported by the data.
+
+In simpler terms, the results indicate that there is a significant relationship between the employment status of parents and the state. The chi-squared test provides evidence that these two variables are not independent of each other.
+
+
+##### **Chi-Squared test by Publice Assistance Income and State**
+```{r}
+prop.table(table(acs_pums_data_clean$Public_assistance_income, acs_pums_data_clean$State), 1)
+
+round(prop.table(table(acs_pums_data_clean$Public_assistance_income, acs_pums_data_clean$State), 
+                 margin = 1)*100)
+
+chisq.test(acs_pums_data_clean$Public_assistance_income, acs_pums_data_clean$State)
+```
+The Pearson's Chi-squared test with Yates' continuity correction was conducted to assess the relationship between the variables "Public_assistance_income" and "State" in the dataset. The test resulted in a chi-squared statistic of 119.8 with 1 degree of freedom, and the p-value is less than 0.00000000000000022.
+
+Based on the extremely small p-value of less than 0.00000000000000022, we can conclude that there is strong evidence to reject the null hypothesis. The null hypothesis assumes that there is no association between public assistance income and the state. Therefore, the alternative hypothesis, which suggests an association between these variables, is supported by the data.
+
+In simpler terms, the results indicate that there is a significant relationship between public assistance income and the state. The chi-squared test with Yates' continuity correction provides evidence that these two variables are not independent of each other.
+
+# **Conclusion**
+
+The t-test was conducted to compare the means of family income between two groups, NY and TX. The extremely small p-value indicates that there is a significant difference in family income between the two groups. In other words, the average family income in NY is significantly different from that in TX. Therefore, we can reject the null hypothesis and conclude that there is a real and meaningful difference in family income between the two states.
+
+On the other hand, the chi-squared test was performed to assess the relationship between two categorical variables: employment status of parents and state, or public assistance income and state. The very small p-value obtained suggests that there is a significant association between these variables. This means that the employment status of parents and state, or public assistance income and state, are not independent of each other. In other words, the variables are related in a non-random way.
+
+To summarize, the t-test demonstrates a significant difference in means between NY and TX regarding family income, while the chi-squared test indicates a significant relationship or association between the categorical variables of employment status of parents (or public assistance income) and state.
